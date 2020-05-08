@@ -59,7 +59,7 @@ UPDATES
  
 
 
-For more details go to the full blog post here: [https://www.myskypelab.com/2019/02/microsoft-teams-direct-routing-tool.html](https://www.myskypelab.com/2019/02/microsoft-teams-direct-routing-tool.html)
+For more details go to the full blog post here: [https://www.myteamslab.com/2019/02/microsoft-teams-direct-routing-tool.html](https://www.myskypelab.com/2019/02/microsoft-teams-direct-routing-tool.html)
 
 
         
