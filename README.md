@@ -42,22 +42,23 @@ If you want to bring your own PSTN carriage via SBC/Gateway to Microsoft Teams t
 
 UPDATES
 
-1.00 Initial Release
+**1.00 Initial Release**
 
 
-1.01 Update:
+**1.01 Update:**
 
 
   *  Added MediaRelayRoutingLocationOverride setting to PSTN Gateway Dialog 
 
-1.02 Minor Update:
+**1.02 Minor Update:**
 
 
   *  It appears that Microsoft have corrected a typo in their PowerShell module for the SipSignalingPort flag (previously had two Ls). This broke the tool's reading of the PSTN Gateway port number. Fixed in this version.
 
 
-1.03 Support for Teams Module
+**1.03 Support for Teams Module**
   *  Added support for Teams PowerShell Module
+
 
 
 For more details go to the full blog post here: [https://www.myteamslab.com/2019/02/microsoft-teams-direct-routing-tool.html](https://www.myskypelab.com/2019/02/microsoft-teams-direct-routing-tool.html)
