@@ -42,6 +42,9 @@ If you want to bring your own PSTN carriage via SBC/Gateway to Microsoft Teams t
 
 UPDATES
 
+**1.04 Teams PowerShell Module Full Support**
+  *  The Skype for Business PowerShell module is being deprecated and the Teams Module is finally good enough to use with this tool. As a result, this tool has now been updated for use with the Microsoft Teams PowerShell Module version 2.3.1 or above.
+
 **1.03 Support for Teams Module**
   *  Added support for Teams PowerShell Module - Note: this release works up to Team Module version 1.1.6 (and does not currently support 2.0.0). So if you're installing the Teams PowerShell module you will need to use the following command "Install-Module -Name MicrosoftTeams -RequiredVersion 1.1.6" to get the supported version.
   
