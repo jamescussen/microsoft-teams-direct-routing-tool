@@ -1,15 +1,15 @@
 ########################################################################
 # Name: Microsoft Teams Direct Routing Tool
-# Version: v1.03 (01/01/2021)
+# Version: v1.04 (26/05/2021)
 # Date: 26/12/2020
 # Created By: James Cussen
 # Web Site: http://www.myteamslab.com
 # Acknowledgments: Thanks to Greig Sheridan for his assistance testing many beta versions of the tool before its release.
 #
-# Notes: This is a PowerShell tool. To run the tool, open it from the PowerShell command line on a PC that has the SfB Online PowerShell module installed ( Located at: https://www.microsoft.com/en-us/download/details.aspx?id=39366 )
+# Notes: This is a PowerShell tool. To run the tool, open it from the PowerShell command line on a PC that has the MicrosoftTeams PowerShell module installed. Get it by opening a PowerShell window using Run as Administrator and running "Install-Module MicrosoftTeams -AllowClobber"
 #		 For more information on the requirements for setting up and using this tool please visit http://www.myteamslab.com.
 #
-# Copyright: Copyright (c) 2020, James Cussen (www.myteamslab.com) All rights reserved.
+# Copyright: Copyright (c) 2021, James Cussen (www.myteamslab.com) All rights reserved.
 # Licence: 	Redistribution and use of script, source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 #				1) Redistributions of script code must retain the above copyright notice, this list of conditions and the following disclaimer.
 #				2) Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
@@ -29,6 +29,9 @@
 #
 # 1.03 Support for Teams Module
 #	- Added support for Teams PowerShell Module
+#
+# 1.04 Teams Module Only
+#	- The Skype for Business PowerShell module is being deprecated and the Teams Module is finally good enough to use with this tool. As a result, this tool has now been updated for use with the Teams PowerShell Module version 2.3.1 or above.
 #
 ########################################################################
 
@@ -57,6 +60,11 @@ elseif($MajorVersion -eq  "4")
 elseif($MajorVersion -eq  "5")
 {
 	Write-Host "This machine has version 5 PowerShell installed. CHECK PASSED!" -foreground "green"
+}
+elseif(([int]$MajorVersion) -ge  6)
+{
+	Write-Host "This machine has version $MajorVersion PowerShell installed. This version uses .NET Core which doesn't support Windows Forms. Please use PowerShell 5 instead." -foreground "red"
+	exit
 }
 else
 {
@@ -88,7 +96,6 @@ Param([string]$name)
 } #end function get-MyModule
 
 $Script:TeamsModuleAvailable = $false
-$Script:SkypeModuleAvailable = $false
 
 Write-Host "--------------------------------------------------------------" -foreground "green"
 Write-Host "Checking for PowerShell Modules..." -foreground "green"
@@ -96,23 +103,26 @@ Write-Host "Checking for PowerShell Modules..." -foreground "green"
 if(Get-MyModule "MicrosoftTeams")
 {
 	#Invoke-Expression "Import-Module Lync"
+	Write-Host "INFO: Teams module should be at least 2.3.1" -foreground "yellow"
+	$version = (Get-Module -name "MicrosoftTeams").Version
+	Write-Host "INFO: Your current version of Teams Module: $version" -foreground "yellow"
+	if([System.Version]$version -ge [System.Version]"2.3.1")
+	{
+		Write-Host "Congratulations, your version is acceptable!" -foreground "green"
+	}
+	else
+	{
+		Write-Host "ERROR: You need to update your Teams Version to higher than 2.3.1. Use the command Update-Module MicrosoftTeams" -foreground "red"
+		exit
+	}
 	Write-Host "Found MicrosoftTeams Module..." -foreground "green"
 	$Script:TeamsModuleAvailable = $true
 }
 else
 {
-	Write-Host "Unable to find the MicrosoftTeams Module..." -foreground "yellow"
-	#Import SkypeOnlineConnector Module
-	if(Get-MyModule "SkypeOnlineConnector")
-	{
-		#Invoke-Expression "Import-Module SkypeforBusiness"
-		Write-Host "Found SkypeOnlineConnector Module..." -foreground "green"
-		$Script:SkypeModuleAvailable = $true
-	}
-	else
-	{
-		Write-Host "Unable to find MicrosoftTeams or SkypeOnlineConnector Modules..." -foreground "yellow"
-	}
+	Write-Host "ERROR: You do not have the Microsoft Teams Module installed. Get it by opening a PowerShell window using `"Run as Administrator`" and running `"Install-Module MicrosoftTeams -AllowClobber`"" -foreground "red"
+	#Can't find module so exit
+	exit
 }
 
 Write-Host "--------------------------------------------------------------" -foreground "green"
@@ -132,12 +142,6 @@ if($OnlinePasswordInput -ne $null -and $OnlinePasswordInput -ne "")
 	$script:OnlinePassword = $OnlinePasswordInput
 }
 
-
-#Office 365 reconnect variables
-$Script:O365Creds = $null
-$Script:O365ReconnectAttempts = 0
-$Script:UserConnectedToSfBOnline = $false
-
 $script:foundMatchArray = @()
 
 $Script:UpdatingDgv = $false
@@ -150,7 +154,7 @@ $Script:UpdatingDgv = $false
 #Add-Type -AssemblyName PresentationFramework
 
 $mainForm = New-Object System.Windows.Forms.Form 
-$mainForm.Text = "Microsoft Teams Direct Routing Tool 1.03"
+$mainForm.Text = "Microsoft Teams Direct Routing Tool 1.04"
 $mainForm.Size = New-Object System.Drawing.Size(700,655) 
 $mainForm.MinimumSize = New-Object System.Drawing.Size(700,450) 
 $mainForm.StartPosition = "CenterScreen"
@@ -168,49 +172,27 @@ $ConnectOnlineButton.Location = New-Object System.Drawing.Size(565,7)
 $ConnectOnlineButton.Size = New-Object System.Drawing.Size(108,20)
 $ConnectOnlineButton.Text = "Connect Teams"
 $ConnectTooltip = New-Object System.Windows.Forms.ToolTip
-$ConnectToolTip.SetToolTip($ConnectOnlineButton, "Connect/Disconnect from Skype for Business Online")
+$ConnectToolTip.SetToolTip($ConnectOnlineButton, "Connect/Disconnect from Teams")
 #$ConnectButton.tabIndex = 1
 $ConnectOnlineButton.Enabled = $true
 $ConnectOnlineButton.Add_Click({	
 
 	$ConnectOnlineButton.Enabled = $false
 	
-	$StatusLabel.Text = "Connecting to O365..."
+	$StatusLabel.Text = "Connecting to Teams..."
 	
 	if($ConnectOnlineButton.Text -eq "Connect Teams")
 	{
-		#write-host "TeamsModuleAvailable " $Script:TeamsModuleAvailable
-		if($Script:TeamsModuleAvailable)
-		{
-			ConnectTeamsModule
-			[System.Windows.Forms.Application]::DoEvents()
-			CheckSkypeForBusinessOnline
-		}
-		elseif($Script:SkypeModuleAvailable)
-		{
-			ConnectSkypeForBusinessOnline
-			[System.Windows.Forms.Application]::DoEvents()
-			CheckSkypeForBusinessOnline
-		}
+		ConnectTeamsModule
+		CheckTeamsOnline
 		
 	}
 	elseif($ConnectOnlineButton.Text -eq "Disconnect Teams")
 	{	
 		$ConnectOnlineButton.Text = "Disconnecting..."
-		$StatusLabel.Text = "Status: Disconnecting from O365..."
-		$Script:UserConnectedToSfBOnline = $false
-		#write-host "TeamsModuleAvailable " $Script:TeamsModuleAvailable
-		if($Script:TeamsModuleAvailable)
-		{
-			DisconnectTeams
-		}
-		elseif($Script:SkypeModuleAvailable)
-		{
-			DisconnectSkypeForBusinessOnline
-		}
-		
-		CheckSkypeForBusinessOnline
-		$Script:O365Creds = $null
+		$StatusLabel.Text = "Status: Disconnecting from Teams..."
+		DisconnectTeams
+		CheckTeamsOnline
 	}
 	
 	$ConnectOnlineButton.Enabled = $true
@@ -287,7 +269,7 @@ $UserDropDownBox.add_SelectedValueChanged(
 	$TestPhoneButton.Enabled = $false
 	
 	$StatusLabel.Text = "Getting Voice Route data..."
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 
@@ -369,7 +351,7 @@ $policyDropDownBox.add_SelectedValueChanged(
 	
 	
 	$StatusLabel.Text = "Getting Usage data..."
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		GetVoiceRoutePolicyData
@@ -419,7 +401,7 @@ $AddVoicePolicyButton.Add_Click(
 	$TestPhoneButton.Enabled = $false
 	
 	$StatusLabel.Text = "Opening Voice Route dialog..."
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$StatusLabel.Text = "Add Voice Route dialog opened..."
@@ -474,7 +456,7 @@ $RemoveVoicePolicyButton.Add_Click(
 	[System.Windows.Forms.DialogResult] $result = [System.Windows.Forms.MessageBox]::Show("Are you sure you want to delete the $VoicePolicy Voice Routing Policy from the system?", "Delete Voice Routing Policy?", [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Warning)
 	if($result -eq [System.Windows.Forms.DialogResult]::OK)
 	{
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			#REMOVED DUE TO O365 POLICY ASSIGNMENT DELAY ISSUE
@@ -570,7 +552,7 @@ $SetVoicePolicyButton.Add_Click(
 	$TestPhoneButton.Enabled = $false
 
 	$StatusLabel.Text = "Changing User Policy..."
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$theUserName = $UserDropDownBox.SelectedItem.ToString()
@@ -958,7 +940,7 @@ $UsageOrderButton.Text = "Usage Order..."
 $UsageOrderButton.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $UsageOrderButton.Add_Click(
 {
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$StatusLabel.Text = "Usage Order dialog opened..."
@@ -1001,7 +983,7 @@ $EditGatewayButton.Add_Click(
 	$AddUsageButton.Enabled = $false
 	$TestPhoneButton.Enabled = $false
 	
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$StatusLabel.Text = "Gateway dialog opened..."
@@ -1039,7 +1021,7 @@ $EditUsageButton.Text = "Edit Usage..."
 $EditUsageButton.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $EditUsageButton.Add_Click(
 {
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$Usage = $dgv.SelectedCells[0].Value
@@ -1067,7 +1049,7 @@ $AddUsageButton.Text = "Add Usage..."
 $AddUsageButton.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $AddUsageButton.Add_Click(
 {
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$StatusLabel.Text = "Add Usage dialog opened..."
@@ -1097,7 +1079,7 @@ $RemoveUsageButton.Text = "Remove Usage"
 $RemoveUsageButton.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 $RemoveUsageButton.Add_Click(
 {
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$StatusLabel.Text = "Removing Usage..."
@@ -1765,7 +1747,7 @@ function EditUsageDialog([string] $usage)
 		#$RemoveVoiceRouteButton.Enabled = $false
 		$okButton.Enabled = $false
 
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			Move-Up-Usage
@@ -1798,7 +1780,7 @@ function EditUsageDialog([string] $usage)
 		#$RemoveVoiceRouteButton.Enabled = $false
 		$okButton.Enabled = $false
 		
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			Move-Down-Usage
@@ -1824,7 +1806,7 @@ function EditUsageDialog([string] $usage)
 	$EditUsageRowButton.Add_Click(
 	{
 		$UsageStatusLabel.Text = "Edit Voice Route..."
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$UpButton.Enabled = $false
@@ -1882,7 +1864,7 @@ function EditUsageDialog([string] $usage)
 	$AddVoiceRouteButton.Add_Click(
 	{
 		$UsageStatusLabel.Text = "Adding Voice Route..."
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$result = NewRouteDialog
@@ -1905,7 +1887,7 @@ function EditUsageDialog([string] $usage)
 	$RemoveVoiceRouteButton.Add_Click(
 	{
 		$UsageStatusLabel.Text = "Removing Voice Route..."
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$UpButton.Enabled = $false
@@ -2005,7 +1987,7 @@ function EditUsageDialog([string] $usage)
 	function Move-Up-Usage
 	{
 		$UsageStatusLabel.Text = "Moving usage up..."
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 				
@@ -2057,7 +2039,7 @@ function EditUsageDialog([string] $usage)
 	function Move-Down-Usage
 	{
 		$UsageStatusLabel.Text = "Moving usage down..."
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$Usage = $dgvUsage.SelectedCells[0].Value
@@ -2218,7 +2200,7 @@ function NewVoicePolicyDialog()
     $okButton.Text = "OK"
     $okButton.Add_Click({ 
 	
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$okButton.Enabled = $false
@@ -2324,7 +2306,7 @@ function NewUsageDialog()
 	$UsageDropDownBox.DropDownStyle = "DropDownList"
 	$UsageDropDownBox.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 	
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		Get-CsOnlinePSTNUsage | select-object usage | ForEach-Object { foreach ($item in $_.usage) { [void] $UsageDropDownBox.Items.Add($item); $UsagesArray += $item} }
@@ -2411,7 +2393,7 @@ function NewUsageDialog()
     $okButton.Text = "OK"
     $okButton.Add_Click({ 
 		
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$VoicePolicy = $policyDropDownBox.SelectedItem
@@ -2545,7 +2527,7 @@ function NewRouteDialog()
 	$VoiceRouteDropDownBox.DropDownStyle = "DropDownList"
 	$VoiceRouteDropDownBox.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 	
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		Get-CsOnlineVoiceRoute | select-object identity | ForEach-Object { $id = ($_.identity).Replace("Tag:", ""); [void] $VoiceRouteDropDownBox.Items.Add($id); $RoutesArray += $id}
@@ -2640,7 +2622,7 @@ function NewRouteDialog()
     $okButton.Text = "OK"
     $okButton.Add_Click({ 
 	
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			if($NewCheckBox.Checked)
@@ -2751,7 +2733,7 @@ function EditRoutingRow([hashtable] $CurrentRowData)
     Add-Type -AssemblyName System.Windows.Forms
 	
 	$RoutesArray = @()
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		Get-CsOnlineVoiceRoute | select-object identity | ForEach-Object { $id = ($_.identity).Replace("Tag:", ""); $RoutesArray += $id}
@@ -2987,7 +2969,7 @@ function EditRoutingRow([hashtable] $CurrentRowData)
 		
 		$okButton.Enabled = $false
 		$CancelButton.Enabled = $false
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{	
 			$thePattern = $PatternTextBox.text
@@ -3189,7 +3171,7 @@ function GatewayPickerDialog([array] $CurrentGateways)
 	$UserPickerListbox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 	$UserPickerListbox.TabStop = $false
 
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$Gateways = Get-CsOnlinePSTNGateway | Select-Object identity
@@ -3310,7 +3292,7 @@ function UsageOrderDialog([string] $id)
 	$UsagePickerListbox.Anchor = [System.Windows.Forms.AnchorStyles]::Top -bor [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 	$UsagePickerListbox.TabStop = $false
 
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$Usages = Get-CsOnlineVoiceRoutingPolicy -identity $id | Select-Object OnlinePSTNUsages
@@ -3415,7 +3397,7 @@ function UsageOrderDialog([string] $id)
     $okButton.Text = "OK"
     $okButton.Add_Click({ 
 	
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			#TO DO: CHANGE THIS TO BE A REPLACE COMMAND.
@@ -3516,7 +3498,7 @@ function EditGateways()
 		#FailoverResponseCodes : 408,503,504
 
 	
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$Gateways = Get-CsOnlinePSTNGateway
@@ -3539,7 +3521,7 @@ function EditGateways()
 	$GatewayDropDownBox.DropDownStyle = "DropDownList"
 	$GatewayDropDownBox.Anchor = [System.Windows.Forms.AnchorStyles]::Left -bor [System.Windows.Forms.AnchorStyles]::Bottom
 	
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		Get-CsOnlinePSTNGateway | select-object identity | ForEach-Object { $id = ($_.identity).Replace("Tag:", ""); [void] $GatewayDropDownBox.Items.Add($id)}
@@ -3572,7 +3554,7 @@ function EditGateways()
 			
 			
 			$GatewayStatusLabel.Text = "Getting gateway settings..."
-			$checkResult = CheckSkypeForBusinessOnline
+			$checkResult = CheckTeamsOnline
 			if($checkResult)
 			{
 				$selection = $GatewayDropDownBox.SelectedItem
@@ -3684,7 +3666,7 @@ function EditGateways()
 		$RemoveButtonSetting = $RemoveButton.Enabled 
 		$ApplyButtonSetting = $ApplyButton.Enabled
 		
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$result = NewGatewayDialog
@@ -3732,7 +3714,7 @@ function EditGateways()
 		$CancelButton.Enabled = $false
 		$ApplyButton.Enabled = $false
 		
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$StatusLabel.Text = "Removing PSTN Gateway..."
@@ -4101,7 +4083,7 @@ function EditGateways()
 			#Check the format of the response codes
 			if($FailoverResponseCodes -match "^([4-6][0-9][0-9],?)+$")
 			{
-				$checkResult = CheckSkypeForBusinessOnline
+				$checkResult = CheckTeamsOnline
 				if($checkResult)
 				{
 					if($SipPortInt -gt 1 -and $SipPortInt -lt 65535)
@@ -4570,7 +4552,7 @@ function NewGatewayDialog()
     $okButton.Text = "OK"
     $okButton.Add_Click({ 
 		
-		$checkResult = CheckSkypeForBusinessOnline
+		$checkResult = CheckTeamsOnline
 		if($checkResult)
 		{
 			$GatewayName = $GatewayTextBox.text
@@ -4776,472 +4758,6 @@ function Regex-Valid( [string] $pattern )
 	}
 }
 
-function ConnectTeamsModule
-{
-	$ConnectOnlineButton.Text = "Connecting..."
-	$StatusLabel.Text = "Connecting to Microsoft Teams..."
-	Write-Host "INFO: Connecting to Microsoft Teams..." -foreground "Yellow"
-	[System.Windows.Forms.Application]::DoEvents()
-	
-	
-	if($global:SFBOsession)
-	{
-		Remove-PSSession $global:SFBOsession
-	}
-	if (Get-Module -ListAvailable -Name MicrosoftTeams)
-	{
-		Import-Module -Name MicrosoftTeams
-		
-		if($Script:O365Creds -ne $null)
-		{
-			$cred = $Script:O365Creds
-		}
-		elseif($script:OnlineUsername -ne "" -and $script:OnlineUsername -ne $null -and $script:OnlinePassword -ne "" -and $script:OnlinePassword -ne $null)
-		{
-			$secpasswd = ConvertTo-SecureString $script:OnlinePassword -AsPlainText -Force
-			$cred = New-Object System.Management.Automation.PSCredential ($script:OnlineUsername, $secpasswd)
-		}
-		elseif($script:OnlineUsername -ne "" -and $script:OnlineUsername -ne $null)
-		{
-			$cred = Get-Credential -Username $script:OnlineUsername -Message "Microsoft Teams"
-		}
-		else
-		{
-			$cred = Get-Credential -Message "Microsoft Teams"
-		}
-		
-		if($cred)
-		{
-			try
-			{
-				$global:SFBOsession = New-CsOnlineSession -Credential $cred -Verbose -ErrorAction Stop #-SessionOption $pso   #MFA FAILS HERE
-				$result = Import-PSSession $global:SFBOsession -AllowClobber
-				if($result -ne $null)
-				{
-					$Script:O365Creds = $cred
-					$Script:O365ReconnectAttempts = 0
-				}
-				$Script:UserConnectedToSfBOnline = $true
-				
-				Fill-Content
-				
-				if(([array] (Get-CsOnlinePSTNGateway -ErrorAction SilentlyContinue)).count -eq 0)
-				{
-					$NoUsagesWarningLabel.Text = "No Gateways assigned. Add a gateway to get started."
-				}
-				else
-				{
-					$NoUsagesWarningLabel.Text = "This Voice Routing Policy has no Usages assigned."
-				}
-				
-				return $true
-			}
-			catch #IF CONNECTION FAILS THEN FALLBACK TO DEFAULT CONNECTION
-			{
-				write-host "INFO: Auth fallback: " $_ -foreground "yellow" 
-				
-				try
-				{
-					$sfbSession = New-CsOnlineSession #-verbose #-UserName $cred.Username  #-OverrideAdminDomain $OverrideDomain
-					$result = Import-PSSession $sfbSession -AllowClobber
-				}
-				catch #IF CONNECTION FAILS THEN DISPLAY ERROR AND EXIT GRACEFULLY
-				{
-					Write-Host "ERROR: " $_ -foreground "red"
-					return $false
-				}
-				if($result -ne $null)
-				{
-					$Script:O365Creds = $cred
-					$Script:O365ReconnectAttempts = 0
-					
-					$Script:UserConnectedToSfBOnline = $true
-				
-					Fill-Content
-					
-					if(([array] (Get-CsOnlinePSTNGateway -ErrorAction SilentlyContinue)).count -eq 0)
-					{
-						$NoUsagesWarningLabel.Text = "No Gateways assigned. Add a gateway to get started."
-					}
-					else
-					{
-						$NoUsagesWarningLabel.Text = "This Voice Routing Policy has no Usages assigned."
-					}
-					
-					return $true
-				}
-				else
-				{
-					return $false
-				}
-			}
-		}
-		else
-		{
-			Write-Host "Error: No credentials supplied." -foreground "red"
-			return $false
-		}
-	}
-	else
-	{
-		Write-host "Please install the Teams PowerShell Module as documented here: https://docs.microsoft.com/en-us/microsoftteams/teams-powershell-install" -ForegroundColor "Red"
-		return $false
-	}
-}
-
-function ConnectSkypeForBusinessOnline
-{
-	$ConnectOnlineButton.Text = "Connecting..."
-	$StatusLabel.Text = "Connecting to Skype for Business Online..."
-	Write-Host "INFO: Connecting to Skype for Business Online..." -foreground "Yellow"
-	[System.Windows.Forms.Application]::DoEvents()
-	if($global:SFBOsession)
-	{
-		Remove-PSSession $global:SFBOsession
-	}
-	if (Get-Module -ListAvailable -Name SkypeOnlineConnector)
-	{
-		Import-module SkypeOnlineConnector
-		
-		if($Script:O365Creds -ne $null)
-		{
-			$cred = $Script:O365Creds
-		}
-		elseif($script:OnlineUsername -ne "" -and $script:OnlineUsername -ne $null -and $script:OnlinePassword -ne "" -and $script:OnlinePassword -ne $null)
-		{
-			$secpasswd = ConvertTo-SecureString $script:OnlinePassword -AsPlainText -Force
-			$cred = New-Object System.Management.Automation.PSCredential ($script:OnlineUsername, $secpasswd)
-		}
-		elseif($script:OnlineUsername -ne "" -and $script:OnlineUsername -ne $null)
-		{
-			$cred = Get-Credential -Username $script:OnlineUsername -Message "Skype for Business Online"
-		}
-		else
-		{
-			$cred = Get-Credential -Message "Skype for Business Online"
-		}
-		
-		if($cred)
-		{
-			try
-			{
-				$global:SFBOsession = New-CsOnlineSession -Credential $cred -Verbose -ErrorAction Stop #-Verbose #-SessionOption $pso   #MFA FAILS HERE
-				$result = Import-PSSession $global:SFBOsession -AllowClobber
-				if($result -ne $null)
-				{
-					$Script:O365Creds = $cred
-					$Script:O365ReconnectAttempts = 0
-				}
-				$Script:UserConnectedToSfBOnline = $true
-				
-				Fill-Content
-				
-				if(([array] (Get-CsOnlinePSTNGateway -ErrorAction SilentlyContinue)).count -eq 0)
-				{
-					$NoUsagesWarningLabel.Text = "No Gateways assigned. Add a gateway to get started."
-				}
-				else
-				{
-					$NoUsagesWarningLabel.Text = "This Voice Routing Policy has no Usages assigned."
-				}
-				
-				return $true
-			}
-			catch
-			{
-				if($_ -match "you must use multi-factor authentication to access") #MFA FALLBACK!
-				{
-					Import-Module SkypeOnlineConnector
-					$sfbSession = New-CsOnlineSession -UserName $cred.Username -Verbose
-					$result = Import-PSSession $sfbSession
-					if($result -ne $null)
-					{
-						$Script:O365Creds = $cred
-						$Script:O365ReconnectAttempts = 0
-					}
-					$Script:UserConnectedToSfBOnline = $true
-					
-					Fill-Content
-					
-					if(([array] (Get-CsOnlinePSTNGateway -ErrorAction SilentlyContinue)).count -eq 0)
-					{
-						$NoUsagesWarningLabel.Text = "No Gateways assigned. Add a gateway to get started."
-					}
-					else
-					{
-						$NoUsagesWarningLabel.Text = "This Voice Routing Policy has no Usages assigned."
-					}
-					
-					return $true
-				}
-				else
-				{
-					Write-Host "Error: $_.Exception.Message" -foreground "red"
-					$Script:O365Creds = $null
-					return $false	
-				}
-			}
-		}
-		else
-		{
-			Write-Host "Error: No credentials supplied." -foreground "red"
-			return $false
-		}				
-	} 
-	else
-	{
-		#Write-host "Please install the Skype for Business Online Windows PowerShell Module" -ForegroundColor "Red"
-		#Write-host "Located at: https://www.microsoft.com/en-us/download/details.aspx?id=39366" -ForegroundColor "Red"
-		Write-host "Please install the Teams PowerShell Module as documented here: https://docs.microsoft.com/en-us/microsoftteams/teams-powershell-install" -ForegroundColor "Red"
-		return $false
-	}
-}
-
-function CheckSkypeForBusinessOnlineInitial
-{	
-	#CHECK IF SESSIONS IS AVAILABLE
-	$PSSessions = Get-PSSession
-	$CurrentlyConnected = $false
-	if($PSSessions.count -gt 0)
-	{
-		foreach($PSSession in $PSSessions)
-		{
-			if($PSSession.Availability -eq "Available" -and ($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-			{
-				$CurrentlyConnected = $true
-				$Script:UserConnectedToSfBOnline = $true
-				$AvailableFound = $true
-			}
-			elseif($PSSession.Availability -eq "None" -and ($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-			{
-				#REMOVE THE MODULE AS IT CAUSES ISSUES
-				$NoneFound = $true
-			}
-			else
-			{
-				#THIS SESSION IS NOT CONNECTED. IGNORE.
-			}
-		}
-		
-		if(!$AvailableFound -and $NoneFound) #No available skypeonline sessions available and old session still exists. Kill it.
-		{
-			$modules = Get-Module
-				
-			foreach($module in $modules)
-			{
-				if($module.name -match "tmp_")
-				{
-					Write-Host "INFO: Found stale module: " $module.name -foreground "green"
-					Write-Host "RUNNING: Remove module " $module.name -foreground "green"
-					Remove-Module -name $module.name
-				}
-			}
-			#Force the dialog for the user to decide if they want to re-connect or not
-			$CurrentlyConnected = $false
-			$Script:UserConnectedToSfBOnline = $true
-		}
-	}
-	
-	#CHECK IF COMMANDS ARE AVAILABLE		
-	$command = "Get-CsOnlineUser"
-	if($CurrentlyConnected -and (Get-Command $command -errorAction SilentlyContinue) -and ($Script:UserConnectedToSfBOnline -eq $true))
-	{
-		#CHECK THAT SfB ONLINE COMMANDS WORK
-		if(([array] (Get-CsOnlineUser -ResultSize 1 -ErrorAction SilentlyContinue)).count -gt 0)
-		{
-			#Write-Host "Connected to Skype for Business Online" -foreground "Green"
-			$ConnectedOnlineLabel.Visible = $true
-			$ConnectOnlineButton.Text = "Disconnect Teams"
-			
-			Fill-Content
-			
-			GetVoiceRoutePolicyData
-			
-			if($currentIndex -ne $null)
-			{
-				if($currentIndex -lt $dgv.Rows.Count)
-				{$dgv.Rows[$currentIndex].Selected = $True}
-			}
-		}
-		else
-		{
-			Write-Host "INFO: Cannot access online PowerShell commands. Use the Connect Teams button to connect." -foreground "Yellow"
-			$ConnectedOnlineLabel.Visible = $false
-			$ConnectOnlineButton.Text = "Connect Teams"
-			$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-			
-			
-			$UserDropDownBox.Enabled = $false
-			$policyDropDownBox.Enabled = $false
-			#$SetVoicePolicyButton.Enabled = $false
-			$TestPhoneButton.Enabled = $false
-			$AddVoicePolicyButton.Enabled = $false
-			$RemoveVoicePolicyButton.Enabled = $false
-			$AddUsageButton.Enabled = $false
-			$EditGatewayButton.Enabled = $false
-			
-			[System.Windows.Forms.DialogResult] $result = [System.Windows.Forms.MessageBox]::Show("The PowerShell connection has been disconnected. Click OK to reconnect.", "PowerShell Connection", [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Warning)
-			if($result -eq [System.Windows.Forms.DialogResult]::OK)
-			{
-				Write-Host "INFO: Re-establishing connection" -foreground "yellow"
-				$ConnectOnlineButton.Enabled = $false
-	
-				#$ConnectResult = ConnectSkypeForBusinessOnline
-				$ConnectResult = $false
-				if($Script:TeamsModuleAvailable)
-				{
-					$ConnectResult = ConnectTeamsModule
-				}
-				else
-				{
-					$ConnectResult = ConnectSkypeForBusinessOnline
-				}
-				if($ConnectResult)
-				{
-					$ConnectedOnlineLabel.Visible = $true
-					$ConnectOnlineButton.Text = "Disconnect Teams"
-				}
-				else
-				{
-					$ConnectedOnlineLabel.Visible = $false
-					$ConnectOnlineButton.Text = "Connect Teams"
-					$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-					$CurrentlyConnected = $false
-					$Script:UserConnectedToSfBOnline = $false
-					Write-Host "ERROR: Failed to connect to Skype for Business Online..." -foreground "red"
-					
-					return $false
-				}
-				
-				$ConnectOnlineButton.Enabled = $true
-			}
-			elseif($result -eq [System.Windows.Forms.DialogResult]::Cancel)
-			{
-				Write-Host "INFO: Disconnecting from O365" -foreground "yellow"
-				
-				if($Script:TeamsModuleAvailable)
-				{
-					DisconnectTeams
-				}
-				else
-				{
-					DisconnectSkypeForBusinessOnline
-				}
-				
-				$ConnectOnlineButton.Enabled = $false
-				$ConnectedOnlineLabel.Visible = $false
-				$ConnectOnlineButton.Text = "Connect Teams"
-				$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-				$CurrentlyConnected = $false
-				$Script:UserConnectedToSfBOnline = $false
-				
-				$ConnectOnlineButton.Enabled = $true
-				$Script:O365Creds = $null #CANCELLING SO DELETE CREDS
-							
-			}
-		
-		}
-	}
-	elseif(($CurrentlyConnected -eq $false) -and ($Script:UserConnectedToSfBOnline -eq $true)) #User has connected to SfBOnline but SfBOnline is reporting being disconnected. Ask if they want to reconnect.
-	{
-		Write-Host "INFO: Not Connected to Teams PowerShell" -foreground "Yellow"
-		$ConnectedOnlineLabel.Visible = $false
-		$ConnectOnlineButton.Text = "Connect Teams"
-		$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-		
-		$UserDropDownBox.Enabled = $false
-		$policyDropDownBox.Enabled = $false
-		#$SetVoicePolicyButton.Enabled = $false
-		$TestPhoneButton.Enabled = $false
-		$AddVoicePolicyButton.Enabled = $false
-		$RemoveVoicePolicyButton.Enabled = $false
-		$AddUsageButton.Enabled = $false
-		$EditGatewayButton.Enabled = $false
-		
-		[System.Windows.Forms.DialogResult] $result = [System.Windows.Forms.MessageBox]::Show("The PowerShell connection has been disconnected. Click OK to reconnect.", "PowerShell Connection", [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Warning)
-		if($result -eq [System.Windows.Forms.DialogResult]::OK)
-		{
-			Write-Host "INFO: Re-establishing connection" -foreground "yellow"
-			$ConnectOnlineButton.Enabled = $false
-	
-			#$ConnectResult = ConnectSkypeForBusinessOnline
-			$ConnectResult = $false
-			if($Script:TeamsModuleAvailable)
-			{
-				$ConnectResult = ConnectTeamsModule
-			}
-			else
-			{
-				$ConnectResult = ConnectSkypeForBusinessOnline
-			}
-			if($ConnectResult)
-			{
-				$ConnectedOnlineLabel.Visible = $true
-				$ConnectOnlineButton.Text = "Disconnect Teams"
-			}
-			else
-			{
-				$ConnectedOnlineLabel.Visible = $false
-				$ConnectOnlineButton.Text = "Connect Teams"
-				$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-				$CurrentlyConnected = $false
-				$Script:UserConnectedToSfBOnline = $false
-				Write-Host "ERROR: Failed to connect to Skype for Business Online..." -foreground "red"
-				
-				return $false
-				
-			}
-			
-			$ConnectOnlineButton.Enabled = $true
-						
-		}
-		elseif($result -eq [System.Windows.Forms.DialogResult]::Cancel)
-		{
-			Write-Host "INFO: Disconnecting from O365" -foreground "yellow"
-			
-			if($Script:TeamsModuleAvailable)
-			{
-				DisconnectTeams
-			}
-			else
-			{
-				DisconnectSkypeForBusinessOnline
-			}
-			
-			$ConnectOnlineButton.Enabled = $false
-			$ConnectedOnlineLabel.Visible = $false
-			$ConnectOnlineButton.Text = "Connect Teams"
-			$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-			$CurrentlyConnected = $false
-			$Script:UserConnectedToSfBOnline = $false
-			
-			$ConnectOnlineButton.Enabled = $true
-			$Script:O365Creds = $null #CANCELLING SO DELETE CREDS
-						
-		}
-	}
-	elseif(!$CurrentlyConnected) 
-	{
-		Write-Host "INFO: Cannot access online PowerShell commands. Use the Connect Teams button to connect." -foreground "Yellow"
-		$ConnectedOnlineLabel.Visible = $false
-		$ConnectOnlineButton.Text = "Connect Teams"
-		$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-		$ConnectOnlineButton.Enabled = $true
-		
-		$UserDropDownBox.Enabled = $false
-		$policyDropDownBox.Enabled = $false
-		#$SetVoicePolicyButton.Enabled = $false
-		$TestPhoneButton.Enabled = $false
-		$AddVoicePolicyButton.Enabled = $false
-		$RemoveVoicePolicyButton.Enabled = $false
-		$AddUsageButton.Enabled = $false
-		$EditGatewayButton.Enabled = $false
-		
-		return $false
-	}
-	
-	return $true
-}
 
 function Fill-Content
 {
@@ -5284,254 +4800,58 @@ function Fill-Content
 	
 }
 
-function CheckSkypeForBusinessOnline
-{	
-	#CHECK IF SESSIONS IS AVAILABLE
-	$PSSessions = Get-PSSession
-	$CurrentlyConnected = $false
-	if($PSSessions.count -gt 0)
-	{
-		foreach($PSSession in $PSSessions)
-		{
-			if($PSSession.Availability -eq "Available" -and ($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-			{
-				$CurrentlyConnected = $true
-				$Script:UserConnectedToSfBOnline = $true
-				$AvailableFound = $true
-			}
-			elseif($PSSession.Availability -eq "None" -and ($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-			{
-				#REMOVE THE MODULE AS IT CAUSES ISSUES
-				$NoneFound = $true
-			}
-			else
-			{
-				#THIS SESSION IS NOT CONNECTED. IGNORE.
-			}
-		}
-		
-		if(!$AvailableFound -and $NoneFound) #No available skypeonline sessions available and old session still exists. Kill it.
-		{
-			$modules = Get-Module
-				
-			foreach($module in $modules)
-			{
-				if($module.name -match "tmp_")
-				{
-					Write-Host "INFO: Found stale module: " $module.name -foreground "green"
-					Write-Host "RUNNING: Remove module " $module.name -foreground "green"
-					Remove-Module -name $module.name
-				}
-			}
-			#Force the dialog for the user to decide if they want to re-connect or not
-			$CurrentlyConnected = $false
-			$Script:UserConnectedToSfBOnline = $true
-		}
-	}
-	
-	#CHECK IF COMMANDS ARE AVAILABLE		
-	$command = "Get-CsOnlineUser"
-	if($CurrentlyConnected -and (Get-Command $command -errorAction SilentlyContinue) -and ($Script:UserConnectedToSfBOnline -eq $true))
-	{
-		#CHECK THAT SfB ONLINE COMMANDS WORK
-		if(([array] (Get-CsOnlineUser -ResultSize 1 -ErrorAction SilentlyContinue)).count -gt 0)
-		{
-			$ConnectedOnlineLabel.Visible = $true
-			$ConnectOnlineButton.Text = "Disconnect Teams"
-		}
-		else
-		{
-			Write-Host "INFO: Cannot access online PowerShell commands. Use the Connect Teams button to connect." -foreground "Yellow"
-			$ConnectedOnlineLabel.Visible = $false
-			$ConnectOnlineButton.Text = "Connect Teams"
-			$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-			
-			
-			$UserDropDownBox.Enabled = $false
-			$policyDropDownBox.Enabled = $false
-			#$SetVoicePolicyButton.Enabled = $false
-			$TestPhoneButton.Enabled = $false
-			$AddVoicePolicyButton.Enabled = $false
-			$RemoveVoicePolicyButton.Enabled = $false
-			$AddUsageButton.Enabled = $false
-			$EditGatewayButton.Enabled = $false
-			
-			[System.Windows.Forms.DialogResult] $result = [System.Windows.Forms.MessageBox]::Show("The PowerShell connection has been disconnected. Click OK to reconnect.", "PowerShell Connection", [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Warning)
-			if($result -eq [System.Windows.Forms.DialogResult]::OK)
-			{
-				Write-Host "INFO: Re-establishing connection" -foreground "yellow"
-				$ConnectOnlineButton.Enabled = $false
-	
-				#$ConnectResult = ConnectSkypeForBusinessOnline
-				$ConnectResult = $false
-				if($Script:TeamsModuleAvailable)
-				{
-					$ConnectResult = ConnectTeamsModule
-				}
-				else
-				{
-					$ConnectResult = ConnectSkypeForBusinessOnline
-				}
-				if($ConnectResult)
-				{
-					$ConnectedOnlineLabel.Visible = $true
-					$ConnectOnlineButton.Text = "Disconnect Teams"
-				}
-				else
-				{
-					$ConnectedOnlineLabel.Visible = $false
-					$ConnectOnlineButton.Text = "Connect Teams"
-					$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-					$CurrentlyConnected = $false
-					$Script:UserConnectedToSfBOnline = $false
-					Write-Host "ERROR: Failed to connect to Skype for Business Online..." -foreground "red"
 
-					return $false
-				}
-				
-				$ConnectOnlineButton.Enabled = $true
-			}
-			elseif($result -eq [System.Windows.Forms.DialogResult]::Cancel)
-			{
-				Write-Host "INFO: Disconnecting from O365" -foreground "yellow"
-				
-				if($Script:TeamsModuleAvailable)
-				{
-					DisconnectTeams
-				}
-				else
-				{
-					DisconnectSkypeForBusinessOnline
-				}
-				
-				$ConnectOnlineButton.Enabled = $false
-				$ConnectedOnlineLabel.Visible = $false
-				$ConnectOnlineButton.Text = "Connect Teams"
-				$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-				$CurrentlyConnected = $false
-				$Script:UserConnectedToSfBOnline = $false
-				
-				$ConnectOnlineButton.Enabled = $true
-							
-			}
-			
-		}
-	}
-	elseif(($CurrentlyConnected -eq $false) -and ($Script:UserConnectedToSfBOnline -eq $true)) #User has connected to SfBOnline but SfBOnline is reporting being disconnected. Ask if they want to reconnect.
-	{
-		
-		Write-Host "INFO: Not Connected to Teams PowerShell" -foreground "Yellow"
-		$ConnectedOnlineLabel.Visible = $false
-		$ConnectOnlineButton.Text = "Connect Teams"
-		$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-		
-		$UserDropDownBox.Enabled = $false
-		$policyDropDownBox.Enabled = $false
-		#$SetVoicePolicyButton.Enabled = $false
-		$TestPhoneButton.Enabled = $false
-		$AddVoicePolicyButton.Enabled = $false
-		$RemoveVoicePolicyButton.Enabled = $false
-		$AddUsageButton.Enabled = $false
-		$EditGatewayButton.Enabled = $false
-		
-		[System.Windows.Forms.DialogResult] $result = [System.Windows.Forms.MessageBox]::Show("The PowerShell connection has been disconnected. Click OK to reconnect.", "PowerShell Connection", [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Warning)
-		if($result -eq [System.Windows.Forms.DialogResult]::OK)
-		{
-			#Write-Host "YES"
-			Write-Host "INFO: Re-establishing connection" -foreground "yellow"
-			$ConnectOnlineButton.Enabled = $false
+function DisableAllButtons
+{
+	$UserDropDownBox.Enabled = $false
+	$policyDropDownBox.Enabled = $false
+	#$SetVoicePolicyButton.Enabled = $false
+	$TestPhoneButton.Enabled = $false
+	$AddVoicePolicyButton.Enabled = $false
+	$RemoveVoicePolicyButton.Enabled = $false
+	$AddUsageButton.Enabled = $false
+	$EditGatewayButton.Enabled = $false
+}
+
+######################################################################
+# NEW FUNCTIONS
+######################################################################
+
+function ConnectTeamsModule
+{
+	$ConnectOnlineButton.Text = "Connecting..."
+	$StatusLabel.Text = "Connecting to Microsoft Teams..."
+	Write-Host "INFO: Connecting to Microsoft Teams..." -foreground "Yellow"
+	[System.Windows.Forms.Application]::DoEvents()
 	
-			#$ConnectResult = ConnectSkypeForBusinessOnline
-			$ConnectResult = $false
-			if($Script:TeamsModuleAvailable)
+	if (Get-Module -ListAvailable -Name MicrosoftTeams)
+	{
+		Import-Module MicrosoftTeams
+		$cred = Get-Credential
+		if($cred)
+		{
+			try
 			{
-				$ConnectResult = ConnectTeamsModule
-			}
-			else
-			{
-				$ConnectResult = ConnectSkypeForBusinessOnline
-			}
-			if($ConnectResult)
-			{
-				$ConnectedOnlineLabel.Visible = $true
+				Connect-MicrosoftTeams -Credential $cred
+				Fill-Content
 				$ConnectOnlineButton.Text = "Disconnect Teams"
-			}
-			else
-			{
-				$ConnectedOnlineLabel.Visible = $false
-				$ConnectOnlineButton.Text = "Connect Teams"
-				$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-				$CurrentlyConnected = $false
-				$Script:UserConnectedToSfBOnline = $false
-				Write-Host "ERROR: Failed to connect to Skype for Business Online..." -foreground "red"
-
-				return $false
 				
+				return $true
 			}
-			
-			$ConnectOnlineButton.Enabled = $true
-						
-		}
-		elseif($result -eq [System.Windows.Forms.DialogResult]::Cancel)
-		{
-			Write-Host "INFO: Disconnecting from O365" -foreground "yellow"
-			
-			if($Script:TeamsModuleAvailable)
+			catch
 			{
-				DisconnectTeams
+				Write-Host "ERROR: " $_ -foreground "red"
+				DisableAllButtons
+				return $false
 			}
-			else
-			{
-				DisconnectSkypeForBusinessOnline
-			}
-			
-			$ConnectOnlineButton.Enabled = $false
-			$ConnectedOnlineLabel.Visible = $false
-			$ConnectOnlineButton.Text = "Connect Teams"
-			$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-			$CurrentlyConnected = $false
-			$Script:UserConnectedToSfBOnline = $false
-			
-			$ConnectOnlineButton.Enabled = $true
-						
 		}
 	}
-	elseif(!$CurrentlyConnected) 
-	{
-		$ConnectedOnlineLabel.Visible = $false
-		$ConnectOnlineButton.Text = "Connect Teams"
-		$NoUsagesWarningLabel.Text = "Press the `"Connect Teams`" button to get started."
-		$ConnectOnlineButton.Enabled = $true
-		$UserDropDownBox.Enabled = $false
-		$policyDropDownBox.Enabled = $false
-		#$SetVoicePolicyButton.Enabled = $false
-		$TestPhoneButton.Enabled = $false
-		$AddVoicePolicyButton.Enabled = $false
-		$RemoveVoicePolicyButton.Enabled = $false
-		$AddUsageButton.Enabled = $false
-		$EditGatewayButton.Enabled = $false
-		
-		return $false
-	}
-	
-	return $true
 }
 
 function DisconnectTeams
 {
-	$PSSessions = Get-PSSession
-	$CurrentlyConnected = $false
-	if($PSSessions.count -gt 0)
-	{
-		foreach($PSSession in $PSSessions)
-		{
-			if(($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-			{
-				Write-Host "RUNNING: Remove-PSSession" $PSSession.Name -foreground "Green"
-				Remove-PSSession $PSSession
-			}
-		}
-	}
+	Write-Host "RUNNING: Disconnect-MicrosoftTeams" -foreground "Green"
+	$disconnectResult = Disconnect-MicrosoftTeams
 	Write-Host "RUNNING: Remove-Module MicrosoftTeams" -foreground "Green"
 	Remove-Module MicrosoftTeams
 	
@@ -5546,155 +4866,101 @@ function DisconnectTeams
 		Write-Host "ERROR: MicrosoftTeams was not removed." -foreground "red"
 	}
 	
-	$modules = Get-Module
-	foreach($module in $modules)
-	{
-		if($module.name -match "tmp_")
-		{
-			Write-Host "INFO: Removing module: " $module.name -foreground "yellow"
-			Write-Host "RUNNING: Remove module " $module.name -foreground "green"
-			Remove-Module -name $module.name
-		}
-	}
-
-	#$Script:O365Creds = $null
-	
-	$UserDropDownBox.Enabled = $false
-	$policyDropDownBox.Enabled = $false
-	#$SetVoicePolicyButton.Enabled = $false
-	$TestPhoneButton.Enabled = $false
-	$AddVoicePolicyButton.Enabled = $false
-	$RemoveVoicePolicyButton.Enabled = $false
-	
-	$EditUsageButton.Enabled = $false
-	$RemoveUsageButton.Enabled = $false
-	$UsageOrderButton.Enabled = $false
-	$EditGatewayButton.Enabled  = $false
-	$AddUsageButton.Enabled = $false
+	$ConnectOnlineButton.Text = "Connect Teams"
+	DisableAllButtons
 }
 
-function DisconnectSkypeForBusinessOnline
-{
-	$PSSessions = Get-PSSession
-	$CurrentlyConnected = $false
-	if($PSSessions.count -gt 0)
-	{
-		foreach($PSSession in $PSSessions)
-		{
-			if(($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-			{
-				Write-Host "RUNNING: Remove-PSSession" $PSSession.Name -foreground "Green"
-				Remove-PSSession $PSSession
-			}
-		}
-	}
-	Write-Host "RUNNING: Remove-Module SkypeOnlineConnector" -foreground "Green"
-	Remove-Module SkypeOnlineConnector
-	
-	Write-Host "RUNNING: Get-Module -ListAvailable -Name SkypeOnlineConnector" -foreground "Green"
-	$result = Invoke-Expression "Get-Module -ListAvailable -Name SkypeOnlineConnector"
-	if($result -ne $null)
-	{
-		Write-Host "SkypeOnlineConnector has been removed successfully" -foreground "Green"
-	}
-	else
-	{
-		Write-Host "ERROR: SkypeOnlineConnector was not removed." -foreground "red"
-	}
-	
-	$modules = Get-Module
-	foreach($module in $modules)
-	{
-		if($module.name -match "tmp_")
-		{
-			Write-Host "INFO: Removing module: " $module.name -foreground "yellow"
-			Write-Host "RUNNING: Remove module " $module.name -foreground "green"
-			Remove-Module -name $module.name
-		}
-	}
 
-	#$Script:O365Creds = $null
-	
-	$UserDropDownBox.Enabled = $false
-	$policyDropDownBox.Enabled = $false
-	#$SetVoicePolicyButton.Enabled = $false
-	$TestPhoneButton.Enabled = $false
-	$AddVoicePolicyButton.Enabled = $false
-	$RemoveVoicePolicyButton.Enabled = $false
-	
-	$EditUsageButton.Enabled = $false
-	$RemoveUsageButton.Enabled = $false
-	$UsageOrderButton.Enabled = $false
-	$EditGatewayButton.Enabled  = $false
-	$AddUsageButton.Enabled = $false
-}
 
-function CloseWindowCleanUp
-{
-	if(($CurrentlyConnected -eq $true) -or ($Script:UserConnectedToSfBOnline -eq $true))
+function CheckTeamsOnlineInitial
+{	
+	#CHECK IF COMMANDS ARE AVAILABLE		
+	$command = "Get-CsOnlineUser"
+	#if($CurrentlyConnected -and (Get-Command $command -errorAction SilentlyContinue) -and ($Script:UserConnectedToTeamsOnline -eq $true))
+	if((Get-Command $command -errorAction SilentlyContinue))
 	{
-		$PSSessions = Get-PSSession
-		$CurrentlyConnected = $false
-		if($PSSessions.count -gt 0)
-		{
-			foreach($PSSession in $PSSessions)
-			{
-				if(($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com"))
-				{
-					Write-Host "RUNNING: Remove-PSSession" $PSSession.Name -foreground "Green"
-					Remove-PSSession $PSSession
-				}
-			}
+		$isConnected = $false
+		try{
+			(Get-CsOnlineUser -ResultSize 1 -ErrorAction SilentlyContinue) 2> $null
+			$isConnected = $true
 		}
-		Write-Host "RUNNING: Remove-Module SkypeOnlineConnector" -foreground "Green"
-		Remove-Module SkypeOnlineConnector
-		
-		Write-Host "RUNNING: Get-Module -ListAvailable -Name SkypeOnlineConnector" -foreground "Green"
-		$result = Invoke-Expression "Get-Module -ListAvailable -Name SkypeOnlineConnector"
-		if($result -ne $null)
+		catch
 		{
-			Write-Host "SkypeOnlineConnector has been removed successfully" -foreground "Green"
+			#Write-Host "ERROR: " $_ -foreground "red"
+			$isConnected = $false
+		}
+		#CHECK THAT SfB ONLINE COMMANDS WORK
+		if($isConnected)
+		{
+			#Write-Host "Connected to Teams" -foreground "Green"
+			$ConnectedOnlineLabel.Visible = $true
+			$ConnectOnlineButton.Text = "Disconnect Teams"
+			$StatusLabel.Text = ""
+
+			Fill-Content
+			GetVoiceRoutePolicyData
+			
+			return $true
 		}
 		else
 		{
-			Write-Host "ERROR: SkypeOnlineConnector was not removed." -foreground "red"
+			Write-Host "INFO: Cannot access Teams. Please use the Connect Teams button." -foreground "Yellow"
+			$ConnectedOnlineLabel.Visible = $false
+			$ConnectOnlineButton.Text = "Connect Teams"
+			$StatusLabel.Text = "Press the `"Connect Teams`" button to get started."
+			
+			DisableAllButtons
 		}
-		
-		$modules = Get-Module
-		foreach($module in $modules)
-		{
-			if($module.name -match "tmp_")
-			{
-				Write-Host "INFO: Removing module: " $module.name -foreground "yellow"
-				Write-Host "RUNNING: Remove module " $module.name -foreground "green"
-				Remove-Module -name $module.name
-			}
-		}
-
-		$Script:O365Creds = $null
 	}
 }
 
-function RemoveBrokenSkypeForBusinessOnlineSession
-{
-	$PSSessions = Get-PSSession
-	$CurrentlyConnected = $false
-	if($PSSessions.count -gt 0)
+
+function CheckTeamsOnline
+{	
+	
+	#CHECK IF COMMANDS ARE AVAILABLE		
+	$isConnected = $false
+	try{
+		(Get-CsOnlineUser -ResultSize 1 -ErrorAction SilentlyContinue) 2> $null
+		$isConnected = $true
+	}
+	catch
 	{
-		foreach($PSSession in $PSSessions)
-		{
-			if(($PSSession.ComputerName -match "lync.com$" -or $PSSession.ComputerName -match "teams.microsoft.com") -and $PSSession.State -eq "Broken" )
-			{
-				Remove-PSSession $PSSession
-			}
-		}
+		#Write-Host "ERROR: " $_ -foreground "red"
+		$isConnected = $false
+	}
+	#CHECK THAT SfB ONLINE COMMANDS WORK
+	if($isConnected)
+	{
+		$ConnectedOnlineLabel.Visible = $true
+		$ConnectOnlineButton.Text = "Disconnect Teams"
+		#$StatusLabel.Text = ""
+		return $true
+		
+	}
+	else
+	{
+		Write-Host "INFO: Cannot access Teams. Please use the Connect Teams button." -foreground "Yellow"
+		$ConnectedOnlineLabel.Visible = $false
+		$ConnectOnlineButton.Text = "Connect Teams"
+		$StatusLabel.Text = "Press the `"Connect Teams`" button to get started."
+		
+		DisableAllButtons
 	}
 }
+
+
+
+######################################################################
+# NEW FUNCTIONS END
+######################################################################
+
+
 
 
 function Move-Up
 {
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$Usage = $dgv.SelectedCells[0].Value
@@ -5728,7 +4994,7 @@ function Move-Up
 
 function Move-Down
 {
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$Usage = $dgv.SelectedCells[0].Value
@@ -5798,7 +5064,7 @@ function GetVoiceRoutePolicyData
 {
 	$dgv.enabled = $false
 	$Script:UpdatingDgv = $true
-	$checkResult = CheckSkypeForBusinessOnline
+	$checkResult = CheckTeamsOnline
 	if($checkResult)
 	{
 		$dgv.Rows.Clear()
@@ -6086,7 +5352,7 @@ function TestPhoneNumberAgainstVoiceRoute()
 	Write-Host "-------------------------------------------------------------"
 }
 
-$result = CheckSkypeForBusinessOnlineInitial
+$result = CheckTeamsOnlineInitial
 
 if($result -eq $true)
 {
@@ -6106,14 +5372,13 @@ $mainForm.Add_Shown({
 })
 [void] $mainForm.ShowDialog()	
 #If you want to always disconnect from O365 on closing the tool then uncomment this: 
-#CloseWindowCleanUp
 
 
 # SIG # Begin signature block
-# MIIZhgYJKoZIhvcNAQcCoIIZdzCCGXMCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
+# MIIZlgYJKoZIhvcNAQcCoIIZhzCCGYMCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUPD8cOV+8xOmEdHuMv7yGD6/s
-# IXqgghSkMIIE/jCCA+agAwIBAgIQDUJK4L46iP9gQCHOFADw3TANBgkqhkiG9w0B
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU4f/HYxRcG565JtMhZgCmVOHf
+# Sl+gghSkMIIE/jCCA+agAwIBAgIQDUJK4L46iP9gQCHOFADw3TANBgkqhkiG9w0B
 # AQsFADByMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYD
 # VQQLExB3d3cuZGlnaWNlcnQuY29tMTEwLwYDVQQDEyhEaWdpQ2VydCBTSEEyIEFz
 # c3VyZWQgSUQgVGltZXN0YW1waW5nIENBMB4XDTIxMDEwMTAwMDAwMFoXDTMxMDEw
@@ -6223,28 +5488,28 @@ $mainForm.Add_Shown({
 # gT1VhqjeROCLKUm8N928wM3iBEjH9pFyQlBDNHFgiFt9H/NXhFJ5IfC8yDzbt7a/
 # 9hVwtcWMWygxvSKjL6pCTAXBXPWajiU+ddcV6VRs3QuRYsex0DGrABM1AcDXnRKZ
 # OlLu2bhh7abbeWBWXCAaBHYmCFbPpspUj6eb5R8AI52+leeMEggPIw1SX21HHh6j
-# rHLF9RJUBJDeSzGCBEwwggRIAgEBMIGGMHIxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
+# rHLF9RJUBJDeSzGCBFwwggRYAgEBMIGGMHIxCzAJBgNVBAYTAlVTMRUwEwYDVQQK
 # EwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5jb20xMTAvBgNV
 # BAMTKERpZ2lDZXJ0IFNIQTIgQXNzdXJlZCBJRCBDb2RlIFNpZ25pbmcgQ0ECEAo0
 # hyG/vRZB2hmqZmgHQWAwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwxCjAIoAKA
 # AKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEO
-# MAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFF4LVU0MwsnI3702lAV5EHUD
-# OOtgMA0GCSqGSIb3DQEBAQUABIIBAKPYKlwCwCavs9im3R8X/yOlnT10SLCEoIgR
-# ar/BDGXW4xP4egMT9J5KdSeg5Wyx9tYnZhbU1A4b8hxTe+XCze1cCK7wgEBzbh6p
-# C8J6vS+va5XycTO2QsOuTyOh+hSadH5ltNuyzHQ/0ClH0S6tGeWqVy901eoqxiQF
-# fa68h8+OuLl043LmCLJt5s3ypdApU/PGZf/tGRnfcPgyWcCsgtNwCTxyrgNEnUMX
-# E3YaWNXMzAucqA3Afi01o6xEj+MaxQ/4Kh3kcqhwBfY8MReDL2DT4xIRmhSb+ogm
-# ifAVJy3jQtYjgaUWypjeupwSZ94K3sxnFE9k+kDaXl/9hJ/LsYmhggIgMIICHAYJ
-# KoZIhvcNAQkGMYICDTCCAgkCAQEwgYYwcjELMAkGA1UEBhMCVVMxFTATBgNVBAoT
+# MAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMY0Os05I8OxnSMVIZ6bJa+2
+# it4hMA0GCSqGSIb3DQEBAQUABIIBAFOtvDeo9F1UW3f2NJrvmvm54BiI8uQXHsof
+# O1Ser+kYJXC9Z4un2egSORUpjfrMKpKpvsrUCoTWXxObisEr+u7Mr5yRcRki2lLY
+# JNe7dsQ+XoN72aU6CmmS6/KNitb+9hf5445i65db2ifpO2a0fYtAYAy9+od7TFks
+# m6ZiVxqOyBKMkErZi2g+eB4yn1rynn+FT3br8WmFWnoCMjnOd5CuZPC5yuQ4F1Sj
+# HgBsuF7lGJJeRGF4UUk327J2mO6fkxnz95moTS6f4qKbHhib6d86phL86gq8EsJX
+# 6NgNJ0br93pi7dG0hEkfon+1roDLYWwAZF9ZIlvfpmZ1GwTuU3ShggIwMIICLAYJ
+# KoZIhvcNAQkGMYICHTCCAhkCAQEwgYYwcjELMAkGA1UEBhMCVVMxFTATBgNVBAoT
 # DERpZ2lDZXJ0IEluYzEZMBcGA1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTExMC8GA1UE
 # AxMoRGlnaUNlcnQgU0hBMiBBc3N1cmVkIElEIFRpbWVzdGFtcGluZyBDQQIQDUJK
-# 4L46iP9gQCHOFADw3TAJBgUrDgMCGgUAoF0wGAYJKoZIhvcNAQkDMQsGCSqGSIb3
-# DQEHATAcBgkqhkiG9w0BCQUxDxcNMjEwMTA3MTAyODI0WjAjBgkqhkiG9w0BCQQx
-# FgQUNfYk+CuIdawtFk0eMfky34rWCtswDQYJKoZIhvcNAQEBBQAEggEAWgv4Ijkg
-# rvxoMqVZx2zphnWBDdEVnaBjsX9+6MNvy5/PIbYR/FcIrnAqO4ZhvnXNUnTF/nYL
-# P7rb2EkPdHZPOaOl2LtQULD+Ml7QvpFLg/W/gkmnwKKq97sWQFwm9tchsGhS0ZpT
-# qzsOvnUcBGOUzXISFOw6Bc8Rmn76qMQJGov3mv165yFyJ+StgQGKIQjSVkv9H+Q8
-# faQ+0rqObK5OAm5qxGntcxGYN6FQXtxOu67mcu6vOwhxLBl0+OiTB9U9x6y4Bb7P
-# 7+ywwzpDwx1oPufWBJJ/l0/zXqZBLERTkTmjPSnJpZTMk5UMAlhawvw1F1w1X+m5
-# KvsqT9Nn5o3ypA==
+# 4L46iP9gQCHOFADw3TANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJAzELBgkq
+# hkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTIxMDUyNjEyMTYzNVowLwYJKoZIhvcN
+# AQkEMSIEIKyUCCe2ve5GRQsYkpkRe80beRZGEWxeQZmt/vZx9Mu9MA0GCSqGSIb3
+# DQEBAQUABIIBAFZ3gR7DSYq6LU2e4hPSqmOJM+0PYI7MM0/KVDoeam5ywViDDo2D
+# c/e9Ux+tH3SwsI1ExNTjdXKVgJs+bQ8xSsZs5btYlSGAAjhkNU+l6q3VzPXskrow
+# w1BZoeSvMmyPn5p32aF0wAu/2rLeqRCMfq3owlPKGZmKDFo8tVkgz9E6fifIn6my
+# v46q1oPhaHnE/hnVDdSEGj3OQnO4mLO0FAJP9K8Z3MSKsHKXqwUidM/JGfFqYHrL
+# yCRujiHFtMBsNkHzQ8qiZsEVGt+oDsKbrTNYt3rUDLcmy7u1V6u2kEHklU5dpl4V
+# bfQ2Oc/x+4Pd44mDhOjz2gdlI7On8EnDH7Q=
 # SIG # End signature block
