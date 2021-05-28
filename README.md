@@ -42,7 +42,7 @@ If you want to bring your own PSTN carriage via SBC/Gateway to Microsoft Teams t
 
 UPDATES
 
-**1.05 Teams PowerShell Module Full Support**
+**1.05 Added MFA fallback for login**
   *  Added MFA fallback for login
 
 **1.04 Teams PowerShell Module Full Support**
