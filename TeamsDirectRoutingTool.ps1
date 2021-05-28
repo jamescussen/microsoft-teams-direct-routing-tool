@@ -1,15 +1,15 @@
 ########################################################################
 # Name: Microsoft Teams Direct Routing Tool
-# Version: v1.04 (26/05/2021)
+# Version: v1.05 (28/05/2021)
 # Date: 26/12/2020
 # Created By: James Cussen
 # Web Site: http://www.myteamslab.com
 # Acknowledgments: Thanks to Greig Sheridan for his assistance testing many beta versions of the tool before its release.
 #
-# Notes: This is a PowerShell tool. To run the tool, open it from the PowerShell command line on a PC that has the MicrosoftTeams PowerShell module installed. Get it by opening a PowerShell window using Run as Administrator and running "Install-Module MicrosoftTeams -AllowClobber"
+# Notes: This is a PowerShell tool. To run the tool, open it from the PowerShell command line on a PC that has the SfB Online PowerShell module installed ( Located at: https://www.microsoft.com/en-us/download/details.aspx?id=39366 )
 #		 For more information on the requirements for setting up and using this tool please visit http://www.myteamslab.com.
 #
-# Copyright: Copyright (c) 2021, James Cussen (www.myteamslab.com) All rights reserved.
+# Copyright: Copyright (c) 2020, James Cussen (www.myteamslab.com) All rights reserved.
 # Licence: 	Redistribution and use of script, source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 #				1) Redistributions of script code must retain the above copyright notice, this list of conditions and the following disclaimer.
 #				2) Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
@@ -32,6 +32,9 @@
 #
 # 1.04 Teams Module Only
 #	- The Skype for Business PowerShell module is being deprecated and the Teams Module is finally good enough to use with this tool. As a result, this tool has now been updated for use with the Teams PowerShell Module version 2.3.1 or above.
+#
+# 1.05 Added MFA fallback for login
+#	- Added MFA fallback for login
 #
 ########################################################################
 
@@ -154,7 +157,7 @@ $Script:UpdatingDgv = $false
 #Add-Type -AssemblyName PresentationFramework
 
 $mainForm = New-Object System.Windows.Forms.Form 
-$mainForm.Text = "Microsoft Teams Direct Routing Tool 1.04"
+$mainForm.Text = "Microsoft Teams Direct Routing Tool 1.05"
 $mainForm.Size = New-Object System.Drawing.Size(700,655) 
 $mainForm.MinimumSize = New-Object System.Drawing.Size(700,450) 
 $mainForm.StartPosition = "CenterScreen"
@@ -4813,9 +4816,6 @@ function DisableAllButtons
 	$EditGatewayButton.Enabled = $false
 }
 
-######################################################################
-# NEW FUNCTIONS
-######################################################################
 
 function ConnectTeamsModule
 {
@@ -4832,7 +4832,7 @@ function ConnectTeamsModule
 		{
 			try
 			{
-				Connect-MicrosoftTeams -Credential $cred
+				(Connect-MicrosoftTeams -Credential $cred) 2> $null
 				Fill-Content
 				$ConnectOnlineButton.Text = "Disconnect Teams"
 				
@@ -4840,9 +4840,48 @@ function ConnectTeamsModule
 			}
 			catch
 			{
-				Write-Host "ERROR: " $_ -foreground "red"
+				if($_.Exception -match "you must use multi-factor authentication to access" -or $_.Exception -match "The security token could not be authenticated or authorized") #MFA FALLBACK!
+				{
+					try
+					{
+						(Connect-MicrosoftTeams) 2> $null
+						Fill-Content
+						$ConnectOnlineButton.Text = "Disconnect Teams"
+					
+						return $true
+					}
+					catch
+					{
+						if($_.Exception -match "User canceled authentication") #MFA FALLBACK!
+						{
+							Write-Host "INFO: Canceled authentication." -foreground "yellow"
+							DisableAllButtons
+							return $false
+						}
+						else
+						{
+							Write-Host "ERROR: " $_.Exception -foreground "red"
+							DisableAllButtons
+							return $false
+						}
+					}
+				}
+				elseif($_.Exception -match "Error validating credentials due to invalid username or password.")
+				{
+					Write-Host "ERROR: Error validating credentials due to invalid username or password." -foreground "red"
+					DisableAllButtons
+					return $false
+				}
+				else
+				{
+					Write-Host "ERROR: " $_.Exception -foreground "red"
+					DisableAllButtons
+					return $false	
+				}
+				
+				Write-Host "ERROR: " $_.Exception -foreground "red"
 				DisableAllButtons
-				return $false
+				return $false	
 			}
 		}
 	}
@@ -4948,13 +4987,6 @@ function CheckTeamsOnline
 		DisableAllButtons
 	}
 }
-
-
-
-######################################################################
-# NEW FUNCTIONS END
-######################################################################
-
 
 
 
@@ -5372,13 +5404,14 @@ $mainForm.Add_Shown({
 })
 [void] $mainForm.ShowDialog()	
 #If you want to always disconnect from O365 on closing the tool then uncomment this: 
+#CloseWindowCleanUp
 
 
 # SIG # Begin signature block
 # MIIZlgYJKoZIhvcNAQcCoIIZhzCCGYMCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQU4f/HYxRcG565JtMhZgCmVOHf
-# Sl+gghSkMIIE/jCCA+agAwIBAgIQDUJK4L46iP9gQCHOFADw3TANBgkqhkiG9w0B
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUzdwHy8l+4X7a78FRvma8XwS6
+# CBmgghSkMIIE/jCCA+agAwIBAgIQDUJK4L46iP9gQCHOFADw3TANBgkqhkiG9w0B
 # AQsFADByMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYD
 # VQQLExB3d3cuZGlnaWNlcnQuY29tMTEwLwYDVQQDEyhEaWdpQ2VydCBTSEEyIEFz
 # c3VyZWQgSUQgVGltZXN0YW1waW5nIENBMB4XDTIxMDEwMTAwMDAwMFoXDTMxMDEw
@@ -5493,23 +5526,23 @@ $mainForm.Add_Shown({
 # BAMTKERpZ2lDZXJ0IFNIQTIgQXNzdXJlZCBJRCBDb2RlIFNpZ25pbmcgQ0ECEAo0
 # hyG/vRZB2hmqZmgHQWAwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwxCjAIoAKA
 # AKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEO
-# MAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFMY0Os05I8OxnSMVIZ6bJa+2
-# it4hMA0GCSqGSIb3DQEBAQUABIIBAFOtvDeo9F1UW3f2NJrvmvm54BiI8uQXHsof
-# O1Ser+kYJXC9Z4un2egSORUpjfrMKpKpvsrUCoTWXxObisEr+u7Mr5yRcRki2lLY
-# JNe7dsQ+XoN72aU6CmmS6/KNitb+9hf5445i65db2ifpO2a0fYtAYAy9+od7TFks
-# m6ZiVxqOyBKMkErZi2g+eB4yn1rynn+FT3br8WmFWnoCMjnOd5CuZPC5yuQ4F1Sj
-# HgBsuF7lGJJeRGF4UUk327J2mO6fkxnz95moTS6f4qKbHhib6d86phL86gq8EsJX
-# 6NgNJ0br93pi7dG0hEkfon+1roDLYWwAZF9ZIlvfpmZ1GwTuU3ShggIwMIICLAYJ
+# MAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOeiUDnN94gFe8Iz3ZHiIu9A
+# KGpwMA0GCSqGSIb3DQEBAQUABIIBAEpVrQyz8jfH9pczuX7ijkhbbfQXtOposgbu
+# 23MkxEEI3zRS1Z4XxmsrJ6eZXbK6DE/8mHQeGIMmoQuYy/lNSxqfVaC6lhqBy1JA
+# U0Uk1GVGLOHcq9u/E2XML0QgCbZ8iiZdUyTLibWya6EStX8kQifn88VizqicdF19
+# AQfFrxDkIcY/TMCY3Plsq02OkLtBcxpHdikxXLs0BcVZ4kL3WUsorNBXd7r6aJWB
+# gWVuLtRu6yUF6K8F4FCmvihzqEE+tIhGBNccBmsImkEyU9xBEUAAg1Zfxmv2XJXS
+# 701iOjohL0H/gNIj5aXp7oHK+70TTtgzkkq1LayTFsEJZI4MHEahggIwMIICLAYJ
 # KoZIhvcNAQkGMYICHTCCAhkCAQEwgYYwcjELMAkGA1UEBhMCVVMxFTATBgNVBAoT
 # DERpZ2lDZXJ0IEluYzEZMBcGA1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTExMC8GA1UE
 # AxMoRGlnaUNlcnQgU0hBMiBBc3N1cmVkIElEIFRpbWVzdGFtcGluZyBDQQIQDUJK
 # 4L46iP9gQCHOFADw3TANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJAzELBgkq
-# hkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTIxMDUyNjEyMTYzNVowLwYJKoZIhvcN
-# AQkEMSIEIKyUCCe2ve5GRQsYkpkRe80beRZGEWxeQZmt/vZx9Mu9MA0GCSqGSIb3
-# DQEBAQUABIIBAFZ3gR7DSYq6LU2e4hPSqmOJM+0PYI7MM0/KVDoeam5ywViDDo2D
-# c/e9Ux+tH3SwsI1ExNTjdXKVgJs+bQ8xSsZs5btYlSGAAjhkNU+l6q3VzPXskrow
-# w1BZoeSvMmyPn5p32aF0wAu/2rLeqRCMfq3owlPKGZmKDFo8tVkgz9E6fifIn6my
-# v46q1oPhaHnE/hnVDdSEGj3OQnO4mLO0FAJP9K8Z3MSKsHKXqwUidM/JGfFqYHrL
-# yCRujiHFtMBsNkHzQ8qiZsEVGt+oDsKbrTNYt3rUDLcmy7u1V6u2kEHklU5dpl4V
-# bfQ2Oc/x+4Pd44mDhOjz2gdlI7On8EnDH7Q=
+# hkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTIxMDUyODEyMzEwNVowLwYJKoZIhvcN
+# AQkEMSIEIObbZ3SpHQW5gjzt1S+pinj391pcYKlpcSIt0D3h6MweMA0GCSqGSIb3
+# DQEBAQUABIIBABnJa1fg7QCbsTYDwzEAEXQLb6hJyUYta+hfcy6p4ckhcEvXGyD8
+# l2c5jyaoWYgq//6Q1GhyGjApUmaZ1E5RK0/ocEw79vbmOCe2LNl9WgVf7YUdS1vG
+# n3s7X6JnLeSAC9dQ6SLrmYVm/DRGgovopBMXvqqI0rHb7zMNbq7NUAoelZZbUS44
+# 2WtxGQOK3Df1kWDCPl93tjqIZ1UxPDIxfr4vWJ6lfW2UsdIqfE+aEqncYFBNSwPn
+# rHaieZUsCi+yZf1d+YuRVIPjiPODcF8j+vvefrwPtDI3kJK3UkEnvUDiFsgkEstt
+# LRcw5IAZxaNUFkUqn0aqpxyzFKyg0SY6IE4=
 # SIG # End signature block
