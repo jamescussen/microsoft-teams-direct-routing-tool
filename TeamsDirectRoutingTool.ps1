@@ -1,6 +1,6 @@
 ########################################################################
 # Name: Microsoft Teams Direct Routing Tool
-# Version: v1.05 (28/05/2021)
+# Version: v1.06 (09/02/2022)
 # Date: 26/12/2020
 # Created By: James Cussen
 # Web Site: http://www.myteamslab.com
@@ -9,7 +9,7 @@
 # Notes: This is a PowerShell tool. To run the tool, open it from the PowerShell command line on a PC that has the SfB Online PowerShell module installed ( Located at: https://www.microsoft.com/en-us/download/details.aspx?id=39366 )
 #		 For more information on the requirements for setting up and using this tool please visit http://www.myteamslab.com.
 #
-# Copyright: Copyright (c) 2020, James Cussen (www.myteamslab.com) All rights reserved.
+# Copyright: Copyright (c) 2022, James Cussen (www.myteamslab.com) All rights reserved.
 # Licence: 	Redistribution and use of script, source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 #				1) Redistributions of script code must retain the above copyright notice, this list of conditions and the following disclaimer.
 #				2) Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
@@ -35,6 +35,10 @@
 #
 # 1.05 Added MFA fallback for login
 #	- Added MFA fallback for login
+#
+# 1.06 Updated to support Teams Module 3.0.0
+#	- Made changes to support changes to OnlineVoiceRoutingPolicy and TenantDialPlan formatting in Teams PowerShell Module 3.0.0. 
+#	- Teams PowerShell Module 3.0.0 is now the minimum version supported by this version.
 #
 ########################################################################
 
@@ -106,16 +110,16 @@ Write-Host "Checking for PowerShell Modules..." -foreground "green"
 if(Get-MyModule "MicrosoftTeams")
 {
 	#Invoke-Expression "Import-Module Lync"
-	Write-Host "INFO: Teams module should be at least 2.3.1" -foreground "yellow"
+	Write-Host "INFO: Teams module should be at least 3.0.0" -foreground "yellow"
 	$version = (Get-Module -name "MicrosoftTeams").Version
 	Write-Host "INFO: Your current version of Teams Module: $version" -foreground "yellow"
-	if([System.Version]$version -ge [System.Version]"2.3.1")
+	if([System.Version]$version -ge [System.Version]"3.0.0")
 	{
 		Write-Host "Congratulations, your version is acceptable!" -foreground "green"
 	}
 	else
 	{
-		Write-Host "ERROR: You need to update your Teams Version to higher than 2.3.1. Use the command Update-Module MicrosoftTeams" -foreground "red"
+		Write-Host "ERROR: You need to update your Teams Version to higher than 3.0.0. Use the command Update-Module MicrosoftTeams" -foreground "red"
 		exit
 	}
 	Write-Host "Found MicrosoftTeams Module..." -foreground "green"
@@ -157,7 +161,7 @@ $Script:UpdatingDgv = $false
 #Add-Type -AssemblyName PresentationFramework
 
 $mainForm = New-Object System.Windows.Forms.Form 
-$mainForm.Text = "Microsoft Teams Direct Routing Tool 1.05"
+$mainForm.Text = "Microsoft Teams Direct Routing Tool 1.06"
 $mainForm.Size = New-Object System.Drawing.Size(700,655) 
 $mainForm.MinimumSize = New-Object System.Drawing.Size(700,450) 
 $mainForm.StartPosition = "CenterScreen"
@@ -284,9 +288,9 @@ $UserDropDownBox.add_SelectedValueChanged(
 		Write-Host "------------------------SELECTED USER-------------------------" -foreground "green"
 		Write-Host "DisplayName: " $UserDetails.DisplayName -foreground "green"
 		Write-Host "UserPrincipalName: " $UserDetails.UserPrincipalName -foreground "green"
-		Write-Host "OnlineVoiceRoutingPolicy: " $UserDetails.OnlineVoiceRoutingPolicy -foreground "green"
+		Write-Host "OnlineVoiceRoutingPolicy: " $UserDetails.OnlineVoiceRoutingPolicy.Name -foreground "green"
 		Write-Host "LineUri: " $UserDetails.LineUri -foreground "green"
-		Write-Host "TenantDialPlan: " $UserDetails.TenantDialPlan -foreground "green"
+		Write-Host "TenantDialPlan: " $UserDetails.TenantDialPlan.Name -foreground "green"
 		Write-Host "EnterpriseVoiceEnabled: " $UserDetails.EnterpriseVoiceEnabled -foreground "green"
 		Write-Host "--------------------------------------------------------------" -foreground "green"
 		Write-Host
@@ -495,7 +499,7 @@ $RemoveVoicePolicyButton.Add_Click(
 				{
 					$Powershell = ""
 					$newline = [System.Environment]::Newline
-					$users = Get-CsOnlineUser | Select-Object UserPrincipalName,OnlineVoiceRoutingPolicy | where {$_.OnlineVoiceRoutingPolicy -eq "$VoicePolicy"} | ForEach-Object { 
+					$users = Get-CsOnlineUser | Select-Object UserPrincipalName,OnlineVoiceRoutingPolicy | where {$_.OnlineVoiceRoutingPolicy.Name -eq "$VoicePolicy"} | ForEach-Object { 
 					$UPN = $_.UserPrincipalName ;
 					$Powershell += "Grant-CsOnlineVoiceRoutingPolicy -Identity $UPN -PolicyName `$null $newline"}
 			
@@ -5233,7 +5237,7 @@ function GetUserVoiceRoutePolicyData()
 	$SelectedUser = $UserDropDownBox.SelectedItem.ToString()
 	$user = Get-CSOnlineUser -identity $SelectedUser
 	
-	$SelectedPolicy = $user.OnlineVoiceRoutingPolicy
+	$SelectedPolicy = $user.OnlineVoiceRoutingPolicy.Name
 	
 	if($SelectedPolicy -eq "" -or $SelectedPolicy -eq $null)
 	{
@@ -5410,8 +5414,8 @@ $mainForm.Add_Shown({
 # SIG # Begin signature block
 # MIIZlgYJKoZIhvcNAQcCoIIZhzCCGYMCAQExCzAJBgUrDgMCGgUAMGkGCisGAQQB
 # gjcCAQSgWzBZMDQGCisGAQQBgjcCAR4wJgIDAQAABBAfzDtgWUsITrck0sYpfvNR
-# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUzdwHy8l+4X7a78FRvma8XwS6
-# CBmgghSkMIIE/jCCA+agAwIBAgIQDUJK4L46iP9gQCHOFADw3TANBgkqhkiG9w0B
+# AgEAAgEAAgEAAgEAAgEAMCEwCQYFKw4DAhoFAAQUypK17zEbOoiTPnQq4my5i39e
+# a/ugghSkMIIE/jCCA+agAwIBAgIQDUJK4L46iP9gQCHOFADw3TANBgkqhkiG9w0B
 # AQsFADByMQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYD
 # VQQLExB3d3cuZGlnaWNlcnQuY29tMTEwLwYDVQQDEyhEaWdpQ2VydCBTSEEyIEFz
 # c3VyZWQgSUQgVGltZXN0YW1waW5nIENBMB4XDTIxMDEwMTAwMDAwMFoXDTMxMDEw
@@ -5526,23 +5530,23 @@ $mainForm.Add_Shown({
 # BAMTKERpZ2lDZXJ0IFNIQTIgQXNzdXJlZCBJRCBDb2RlIFNpZ25pbmcgQ0ECEAo0
 # hyG/vRZB2hmqZmgHQWAwCQYFKw4DAhoFAKB4MBgGCisGAQQBgjcCAQwxCjAIoAKA
 # AKECgAAwGQYJKoZIhvcNAQkDMQwGCisGAQQBgjcCAQQwHAYKKwYBBAGCNwIBCzEO
-# MAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFOeiUDnN94gFe8Iz3ZHiIu9A
-# KGpwMA0GCSqGSIb3DQEBAQUABIIBAEpVrQyz8jfH9pczuX7ijkhbbfQXtOposgbu
-# 23MkxEEI3zRS1Z4XxmsrJ6eZXbK6DE/8mHQeGIMmoQuYy/lNSxqfVaC6lhqBy1JA
-# U0Uk1GVGLOHcq9u/E2XML0QgCbZ8iiZdUyTLibWya6EStX8kQifn88VizqicdF19
-# AQfFrxDkIcY/TMCY3Plsq02OkLtBcxpHdikxXLs0BcVZ4kL3WUsorNBXd7r6aJWB
-# gWVuLtRu6yUF6K8F4FCmvihzqEE+tIhGBNccBmsImkEyU9xBEUAAg1Zfxmv2XJXS
-# 701iOjohL0H/gNIj5aXp7oHK+70TTtgzkkq1LayTFsEJZI4MHEahggIwMIICLAYJ
+# MAwGCisGAQQBgjcCARUwIwYJKoZIhvcNAQkEMRYEFJ44TX26Kg4sqVMZ2DoEAim+
+# baG0MA0GCSqGSIb3DQEBAQUABIIBAIG9fji/DCgDVjSTiH0SGlq5kRyue5Xgdv8P
+# sZXfErnH2kEptPgwg9m4Zku45HPrid1ph9aIdxcjOAnbdbxrfxZOSYu2Ipk6Z5Mt
+# IrJH1Q7651Mn9zu1IFhKqrDEUaOzpZWzjVLjy83uZz9DQRyHp8UjxWwsenNmjoAj
+# s+b/S6jFuRUqaQPHJk22a3I5k+OTVqZtVJt/iKxC34vQ71eHltwIAjDB7753LqlX
+# CxveXbGe5a+B8ImrxgKbAUeA5SKiLy4nDDI72QJugegrmqz8xDF52mufpcrtObxb
+# rqUnFMPXN4yA7NTGxdzF5v8oU5JzUSTC5EpXaLqQJVWcAsQVvtehggIwMIICLAYJ
 # KoZIhvcNAQkGMYICHTCCAhkCAQEwgYYwcjELMAkGA1UEBhMCVVMxFTATBgNVBAoT
 # DERpZ2lDZXJ0IEluYzEZMBcGA1UECxMQd3d3LmRpZ2ljZXJ0LmNvbTExMC8GA1UE
 # AxMoRGlnaUNlcnQgU0hBMiBBc3N1cmVkIElEIFRpbWVzdGFtcGluZyBDQQIQDUJK
 # 4L46iP9gQCHOFADw3TANBglghkgBZQMEAgEFAKBpMBgGCSqGSIb3DQEJAzELBgkq
-# hkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTIxMDUyODEyMzEwNVowLwYJKoZIhvcN
-# AQkEMSIEIObbZ3SpHQW5gjzt1S+pinj391pcYKlpcSIt0D3h6MweMA0GCSqGSIb3
-# DQEBAQUABIIBABnJa1fg7QCbsTYDwzEAEXQLb6hJyUYta+hfcy6p4ckhcEvXGyD8
-# l2c5jyaoWYgq//6Q1GhyGjApUmaZ1E5RK0/ocEw79vbmOCe2LNl9WgVf7YUdS1vG
-# n3s7X6JnLeSAC9dQ6SLrmYVm/DRGgovopBMXvqqI0rHb7zMNbq7NUAoelZZbUS44
-# 2WtxGQOK3Df1kWDCPl93tjqIZ1UxPDIxfr4vWJ6lfW2UsdIqfE+aEqncYFBNSwPn
-# rHaieZUsCi+yZf1d+YuRVIPjiPODcF8j+vvefrwPtDI3kJK3UkEnvUDiFsgkEstt
-# LRcw5IAZxaNUFkUqn0aqpxyzFKyg0SY6IE4=
+# hkiG9w0BBwEwHAYJKoZIhvcNAQkFMQ8XDTIyMDIxMDA1MjEyOFowLwYJKoZIhvcN
+# AQkEMSIEIBvy8ZqeAwOAdPwo0pytn3YM+tYawLTqndqwSm1D0DwtMA0GCSqGSIb3
+# DQEBAQUABIIBAKSM4yGOIwoF7yBm+LzDR0mL1j4K/F9+wxsZ7q3GKCLuLUoiXIsQ
+# Cy0UyspAqDh8cNvwdQ6Sj7+IDfM29f5eB/mE15YhzweokF06eN+NtXxUiJDiUX0Q
+# VA+zf18ycDuXr5X6CNCe/Quzg48CQlrAqPBm3TEemO/sbX3/llv1u3pPLlMWDxvh
+# BxlLKoVZ8W5xtHWLG/IEJ1fXCRLNgqgMN1BbV6wn7ypbR95uVuKYlJZgKZJkXtwk
+# iUXD2PULkn4vpRk0lBGji84HTtbtszkNa1gIpfWU2c4CHqDRL5c93UzdqJx3EnAG
+# 5E5lTclSeGJkTquiTIXl6qLwWGdnVhXyu2w=
 # SIG # End signature block
