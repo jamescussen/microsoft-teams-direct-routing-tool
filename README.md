@@ -42,6 +42,10 @@ If you want to bring your own PSTN carriage via SBC/Gateway to Microsoft Teams t
 
 UPDATES
 
+**1.06 Updated to support Teams Module 3.0.0**
+  * Made changes to support changes to OnlineVoiceRoutingPolicy and TenantDialPlan formatting in Teams PowerShell Module 3.0.0. 
+  * Teams PowerShell Module 3.0.0 is now the minimum version supported by this version.
+
 **1.05 Added MFA fallback for login**
   *  Added MFA fallback for login
 
